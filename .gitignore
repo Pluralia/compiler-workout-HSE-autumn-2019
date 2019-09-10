@@ -2,6 +2,7 @@
 *.a
 *.o
 # other
+*.swp
 *~
 *.cmi
 *.cmx
@@ -12,6 +13,7 @@
 *.byte
 *.native
 src/.depend
+regression/.depend
 regression/*.log
 regression/deep-expressions/*.log
 regression/expressions/*.log
