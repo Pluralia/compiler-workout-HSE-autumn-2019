@@ -35,13 +35,43 @@ module Expr =
     let update x v s = fun y -> if x = y then v else s y
 
     (* Expression evaluator
-
           val eval : state -> t -> int
  
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
     *)
-    let eval _ = failwith "Not implemented yet"
+    let i2b i =
+            match i with
+            | 0 -> false
+            | _ -> true
+
+    let b2i b =
+            match b with
+            | false -> 0
+            | true  -> 1
+
+    let applyOpTo op e1 e2 =
+            match op with
+            | "+"  -> e1 + e2
+            | "-"  -> e1 - e2
+            | "*"  -> e1 * e2 
+            | "/"  -> e1 / e2
+            | "%"  -> e1 mod e2
+            | "<"  -> b2i (e1 < e2)
+            | "<=" -> b2i (e1 <= e2)
+            | ">"  -> b2i (e1 > e2)
+            | ">=" -> b2i (e1 >= e2)
+            | "==" -> b2i (e1 == e2)
+            | "!=" -> b2i (e1 != e2)
+            | "&&" -> b2i (i2b e1 && i2b e2)
+            | "!!" -> b2i (i2b e1 || i2b e2)
+            | und  -> failwith (Printf.sprintf "Undefined operator %s" und)
+
+    let rec eval state expr =
+            match expr with
+            | Const cVal                   -> cVal
+            | Var name                     -> state name
+            | Binop (opName, expr1, expr2) -> applyOpTo opName (eval state expr1) (eval state expr2)
 
   end
                     
@@ -60,13 +90,19 @@ module Stmt =
     type config = Expr.state * int list * int list 
 
     (* Statement evaluator
-
           val eval : config -> t -> config
-
        Takes a configuration and a statement, and returns another configuration
     *)
-    let eval _ = failwith "Not implemented yet"
-                                                         
+    let rec eval (st, i, o) stm =
+            match stm with
+            | Read name           ->
+                    (match i with
+                     | hi :: ti -> (Expr.update name hi st, ti, o)
+                     | _        -> failwith "Try read without input")
+            | Write expr          -> (st, i, o @ [Expr.eval st expr])
+            | Assign (name, expr) -> (Expr.update name (Expr.eval st expr) st, i, o)
+            | Seq (stm1, stm2)    -> eval (eval (st, i, o) stm1) stm2
+
   end
 
 (* The top-level definitions *)
@@ -75,10 +111,9 @@ module Stmt =
 type t = Stmt.t    
 
 (* Top-level evaluator
-
      eval : int list -> t -> int list
-
    Takes a program and its input stream, and returns the output stream
 *)
 let eval i p =
   let _, _, o = Stmt.eval (Expr.empty, i, []) p in o
+
