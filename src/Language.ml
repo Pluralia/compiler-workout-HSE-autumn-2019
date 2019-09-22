@@ -4,7 +4,7 @@
 open GT
 
 (* Opening a library for combinator-based syntax analysis *)
-open Ostap.Combinators
+open Ostap
        
 (* Simple expressions: syntax and semantics *)
 module Expr =
@@ -44,7 +44,38 @@ module Expr =
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
     *)
-    let eval _ = failwith "Not implemented yet"
+    let i2b i =
+            match i with
+            | 0 -> false
+            | _ -> true
+    
+    let b2i b =
+            match b with
+            | false -> 0
+            | true  -> 1
+    
+    let applyOpTo op e1 e2 =
+            match op with
+            | "+"  -> e1 + e2
+            | "-"  -> e1 - e2
+            | "*"  -> e1 * e2 
+            | "/"  -> e1 / e2
+            | "%"  -> e1 mod e2
+            | "<"  -> b2i (e1 < e2)
+            | "<=" -> b2i (e1 <= e2)
+            | ">"  -> b2i (e1 > e2)
+            | ">=" -> b2i (e1 >= e2)
+            | "==" -> b2i (e1 == e2)
+            | "!=" -> b2i (e1 != e2)
+            | "&&" -> b2i (i2b e1 && i2b e2)
+            | "!!" -> b2i (i2b e1 || i2b e2)
+            | und  -> failwith (Printf.sprintf "Undefined operator %s" und)
+    
+    let rec eval state expr =
+            match expr with
+            | Const cVal                   -> cVal
+            | Var name                     -> state name
+            | Binop (opName, expr1, expr2) -> applyOpTo opName (eval state expr1) (eval state expr2)
 
     (* Expression parser. You can use the following terminals:
 
@@ -53,7 +84,36 @@ module Expr =
    
     *)
     ostap (
-      parse: empty {failwith "Not implemented yet"}
+        parse:
+            !(Util.expr
+                (fun x -> x)
+                [|
+                    `Righta , [ ostap ("!!"), (fun e1 e2 -> Binop ("!!", e1, e2))
+                              ];
+                    `Righta , [ ostap ("&&"), (fun e1 e2 -> Binop ("&&", e1, e2))
+                              ];
+                    `Nona   , [ ostap ("!="), (fun e1 e2 -> Binop ("!=", e1, e2))
+                              ; ostap ("=="), (fun e1 e2 -> Binop ("==", e1, e2))
+                              ; ostap (">="), (fun e1 e2 -> Binop (">=", e1, e2))
+                              ; ostap (">"),  (fun e1 e2 -> Binop (">" , e1, e2))
+                              ; ostap ("<="), (fun e1 e2 -> Binop ("<=", e1, e2))
+                              ; ostap ("<"),  (fun e1 e2 -> Binop ("<" , e1, e2))
+                              ];
+                    `Lefta  , [ ostap ("+"),  (fun e1 e2 -> Binop ("+" , e1, e2))
+                              ; ostap ("-"),  (fun e1 e2 -> Binop ("-" , e1, e2))
+                              ];
+                    `Lefta  , [ ostap ("*"),  (fun e1 e2 -> Binop ("*" , e1, e2))
+                              ; ostap ("/"),  (fun e1 e2 -> Binop ("/" , e1, e2))
+                              ; ostap ("%"),  (fun e1 e2 -> Binop ("%" , e1, e2))
+                              ]
+                |]
+                primary
+            );
+
+        primary:
+          x:IDENT        {Var x}
+        | n:DECIMAL      {Const n}
+        | -"(" parse -")"
     )
 
   end
@@ -78,11 +138,26 @@ module Stmt =
 
        Takes a configuration and a statement, and returns another configuration
     *)
-    let eval _ = failwith "Not implemented yet"
+    let rec eval (st, i, o) stm =
+            match stm with
+            | Read name           ->
+                    (match i with
+                     | hi :: ti -> (Expr.update name hi st, ti, o)
+                     | _        -> failwith "Try read without input")
+            | Write expr          -> (st, i, o @ [Expr.eval st expr])
+            | Assign (name, expr) -> (Expr.update name (Expr.eval st expr) st, i, o)
+            | Seq (stm1, stm2)    -> eval (eval (st, i, o) stm1) stm2
 
     (* Statement parser *)
     ostap (
-      parse: empty {failwith "Not implemented yet"}
+        parse: seq | atom;
+
+        atom:
+          "read" -" "* -"(" x:IDENT -")"               {Read x}
+        | "write" -" "* -"(" expr:!(Expr.parse) -")"   {Write expr}
+        | x:IDENT -" "* -":=" -" "* expr:!(Expr.parse) {Assign (x, expr)};
+        
+        seq: stmt1:atom -" "* -";" -" "* stmt2:parse {Seq (stmt1, stmt2)}
     )
       
   end
