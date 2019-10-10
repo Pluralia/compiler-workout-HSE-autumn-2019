@@ -80,7 +80,55 @@ open SM
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
-let compile _ _ = failwith "Not yet implemented"
+let cmp2suffix = function
+        | "<"  -> "l"
+        | "<=" -> "le"
+        | ">"  -> "g"
+        | ">=" -> "ge"
+        | "==" -> "e"
+        | "!=" -> "ne"
+
+let compileBinop x y op a =
+         match op with
+         | "+"| "-"| "*" | "&&" | "!!" ->
+                         [Mov (x, eax); Mov (y, edx); Binop (op, edx, eax); Mov (eax, a)]
+         | "/" ->
+                         [Mov (x, eax); Cltd; IDiv y; Mov (eax, a)]
+         | "%" ->
+                         [Mov (x, eax); Cltd; IDiv y; Mov (edx, a)]
+         | "==" | "!=" | "<=" | "<" | ">=" | ">" ->
+                         [Mov (y, eax); Binop ("cmp", eax, x); Mov (L 0, edx);
+                          Set (cmp2suffix op, "%dl"); Mov (edx, a)]
+         | und ->
+                        failwith (Printf.sprintf "Undefined operator %s" und)
+
+let compileInstr env = function
+        | BINOP op ->
+                        let y, x, env = env#pop2 
+                         in let a, env = env#allocate 
+                             in (env, compileBinop x y op a)
+        | CONST x ->
+                        let a, env = env#allocate
+                         in (env, [Mov (L x, a)])
+        | READ ->
+                        let a, env = env#allocate
+                         in (env, [Call "Lread"; Mov (eax, a)])
+        | WRITE -> 
+                        let p, env = env#pop
+                         in (env, [Push p; Call "Lwrite"; Pop eax])
+        | LD x ->
+                        let a, env = env#allocate
+                         in (env#global x, [Mov (M (env#loc x), eax); Mov (eax, a)])
+        | ST x ->
+                        let p, env = env#pop
+                         in (env#global x, [Mov (p, eax); Mov (eax, M (env#loc x))])
+
+let rec compile env = function
+        | []             -> (env, [])
+        | hprog :: tprog ->
+                        let (env', instr) = compileInstr env hprog
+                         in let (resEnv, instrs) = compile env' tprog
+                             in (resEnv, instr @ instrs)
 
 (* A set of strings *)           
 module S = Set.Make (String)
