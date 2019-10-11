@@ -27,8 +27,31 @@ type config = int list * Stmt.config
 
    Takes an environment, a configuration and a program, and returns a configuration as a result. The
    environment is used to locate a label to jump to (via method env#labeled <label_name>)
-*)                         
-let rec eval env conf prog = failwith "Not yet implemented"
+*)
+let rec eval env cfg = function
+        | [] -> cfg
+        | hp :: tp ->
+            match (hp, cfg) with
+            | (BINOP opName, (y :: x :: restStack, stmCfg)) ->
+                            eval env (Language.Expr.applyOpTo opName x y :: restStack, stmCfg) tp
+            | (CONST x, (stack, stmCfg)) ->
+                            eval env (x :: stack, stmCfg) tp
+            | (READ, (stack, (st, hi :: ti, o))) ->
+                            eval env (hi :: stack, (st, ti, o)) tp
+            | (WRITE, (hstack :: tstack, (st, i, o))) ->
+                            eval env (tstack, (st, i, o @ [hstack])) tp
+            | (LD name, (stack, (st, i, o))) ->
+                            eval env (st name :: stack, (st, i, o)) tp
+            | (ST name, (hstack :: tstack, (st, i, o))) ->
+                            eval env (tstack, (Language.Expr.update name hstack st, i, o)) tp
+            | (LABEL name, cfg) ->
+                            eval env cfg tp
+            | (JMP name, cfg) ->
+                            eval env cfg (env#labeled name)
+            | (CJMP (cond, name), (hstack :: tstack, stmCfg)) ->
+                            eval env cfg (if (hstack = 0 && cond = "z")
+                                            then env#labeled name
+                                            else tp)
 
 (* Top-level evaluation
 
@@ -53,4 +76,38 @@ let run p i =
    Takes a program in the source language and returns an equivalent program for the
    stack machine
 *)
-let compile p = failwith "Not yet implemented"
+let labGen =
+        object
+                val mutable num = 0
+
+                method next =
+                        num <- num + 1;
+                        "label" ^ string_of_int num
+        end
+
+let rec compile =
+  let rec expr = function
+  | Expr.Var   x          -> [LD x]
+  | Expr.Const n          -> [CONST n]
+  | Expr.Binop (op, x, y) -> expr x @ expr y @ [BINOP op]
+  in
+  function
+  | Stmt.Seq (s1, s2)   -> compile s1 @ compile s2
+  | Stmt.Read x         -> [READ; ST x]
+  | Stmt.Write e        -> expr e @ [WRITE]
+  | Stmt.Assign (x, e)  -> expr e @ [ST x]
+  | Stmt.Skip           -> []
+  | Stmt.If (e, sT, sF) ->
+                  let labElse = labGen#next
+                   in let labFi = labGen#next
+                       in expr e @ [CJMP ("z", labElse)] @
+                          compile sT @ [JMP labFi; LABEL labElse] @
+                          compile sF @ [LABEL labFi]
+  | Stmt.While (e, s)   ->
+                  let labDo = labGen#next
+                   in let labOd = labGen#next
+                       in [LABEL labDo] @ expr e @ [CJMP ("z", labOd)] @
+                          compile s @ [JMP labDo; LABEL labOd]
+  | Stmt.Until (s, e)   ->
+                  let labRepeat = labGen#next
+                   in [LABEL labRepeat] @ compile s @ expr e @ [CJMP ("z", labRepeat)] 
