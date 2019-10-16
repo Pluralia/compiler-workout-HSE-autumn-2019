@@ -96,15 +96,19 @@ let cmp2suffix = function
 
 let compileBinop x y op a =
          match op with
-         | "+"| "-"| "*" | "&&" | "!!" ->
+         | "+"| "-"| "*" ->
                          [Mov (x, eax); Mov (y, edx); Binop (op, edx, eax); Mov (eax, a)]
          | "/" ->
                          [Mov (x, eax); Cltd; IDiv y; Mov (eax, a)]
          | "%" ->
                          [Mov (x, eax); Cltd; IDiv y; Mov (edx, a)]
+         | "&&" | "!!" ->
+                         [Mov (x, eax); Binop ("cmp", L 0, eax); Mov (L 0, eax); Set ("ne", "%al");
+                          Mov (y, edx); Binop ("cmp", L 0, edx); Mov (L 0, edx); Set ("ne", "%dl");
+                          Binop (op, edx, eax); Mov (eax, a)]
          | "==" | "!=" | "<=" | "<" | ">=" | ">" ->
-                         [Mov (y, eax); Binop ("cmp", eax, x); Mov (L 0, edx);
-                          Set (cmp2suffix op, "%dl"); Mov (edx, a)]
+                         [Mov (y, eax); Binop ("cmp", eax, x); Mov (L 0, eax);
+                          Set (cmp2suffix op, "%al"); Mov (eax, a)]
          | und ->
                         failwith (Printf.sprintf "Undefined operator %s" und)
 
