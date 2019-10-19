@@ -256,7 +256,9 @@ module Definition =
             | _ -> n
 
     ostap (
-        parse:    "fun" name:IDENT
+        parse:    def;
+        
+        def:      "fun" name:IDENT
                   "(" args:parseArgs ")"
                   loc:(-"local" parseArgs)?
                   "{" stm:!(Stmt.parse) "}"          {(name, (args, maybe [] loc, stm))};
