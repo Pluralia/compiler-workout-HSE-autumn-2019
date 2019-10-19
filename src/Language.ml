@@ -251,24 +251,24 @@ module Definition =
     (* The type for a definition: name, argument list, local variables, body *)
     type t = string * (string list * string list * Stmt.t)
 
-    let maybe n = function
-            | Some a -> a
-            | _ -> n
+    let maybe = function | Some a -> a | _ -> []
 
     ostap (
         parse:    def;
         
-        def:      "fun" name:IDENT
-                  "(" args:parseArgs ")"
-                  loc:(-"local" parseArgs)?
-                  "{" stm:!(Stmt.parse) "}"          {(name, (args, maybe [] loc, stm))};
-
+        parseName: name:IDENT                        {name};
+        
         parseArgs:   <x::xs> :!(Util.listBy)
                              [ostap(",")][parseName] {x::xs}
-                   | ""                              {[]};
-       
-        parseName: name:IDENT                        {name}
+             | ""                                    {[]};
 
+        parseLocal: "local" loc:!(Util.listBy)
+                             [ostap(",")][parseName] {loc};
+
+        def:      "fun" name:IDENT
+                  "(" args:!(parseArgs) ")"
+                  loc:!(parseLocal)?
+                  "{" stm:!(Stmt.parse) "}"          {(name, (args, maybe loc, stm))}
     )
 
   end
