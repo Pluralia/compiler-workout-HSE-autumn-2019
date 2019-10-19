@@ -198,9 +198,8 @@ module Stmt =
                                 
     (* Statement parser *)
     ostap (
-        parse: seq | atom;
-
-        atom: read | write | assign | skip | ifAtom | whileAtom | untilAtom | forAtom | call;
+        parse: seq | read | write | assign | skip | call
+                   | ifSt | whileSt | repeatSt | forSt;
 
         read:      "read" "(" x:IDENT ")"             {Read x};
         
@@ -208,11 +207,14 @@ module Stmt =
         
         assign:    x:IDENT ":=" expr:!(Expr.parse)    {Assign (x, expr)};
         
-        seq:       stmt1:atom ";" stmt2:parse         {Seq (stmt1, stmt2)};
+        seq:       stmt1:(read | write | assign
+                        | skip | call | ifSt
+                     | whileSt | repeatSt | forSt)
+                   ";" stmt2:parse                    {Seq (stmt1, stmt2)};
         
         skip:      "skip"                             {Skip};
 
-        ifAtom:    "if" expr:!(Expr.parse)
+        ifSt:      "if" expr:!(Expr.parse)
                    "then" stmt:!(parse)
                    stmf:!(ifElse)                     {If (expr, stmt, stmf)};
 
@@ -222,13 +224,13 @@ module Stmt =
                    | "else" stmf:!(parse) "fi"        {stmf}
                    | "fi"                             {Skip};
 
-        whileAtom: "while" expr:!(Expr.parse)
+        whileSt:   "while" expr:!(Expr.parse)
                    "do" stm:!(parse) "od"             {While (expr, stm)};
 
-        untilAtom: "repeat" stm:!(parse)
-                   "until" expr:!(Expr.parse)         {Repeat (stm, expr)};
+        repeatSt:  "repeat" stm:!(parse)
+                   "until" expr:!(Expr.parse)        {Repeat (stm, expr)};
 
-        forAtom:   "for" assign:!(parse) ","
+        forSt:     "for" assign:!(parse) ","
                          expr:!(Expr.parse) ","
                          updAssign:!(parse)
                    "do" stm:!(parse) "od"             {Seq (assign,
@@ -254,21 +256,21 @@ module Definition =
     let maybe = function | Some a -> a | _ -> []
 
     ostap (
-        parse:    def;
+        parse:     def;
         
-        parseName: name:IDENT                        {name};
+        parseName:  name:IDENT                         {name};
         
-        parseArgs:   <x::xs> :!(Util.listBy)
-                             [ostap(",")][parseName] {x::xs}
-             | ""                                    {[]};
+        parseArgs:  <x::xs> :!(Util.listBy)
+                               [ostap(",")][parseName] {x::xs}
+                    | ""                               {[]};
 
         parseLocal: "local" loc:!(Util.listBy)
-                             [ostap(",")][parseName] {loc};
+                             [ostap(",")][parseName]   {loc};
 
-        def:      "fun" name:IDENT
-                  "(" args:!(parseArgs) ")"
-                  loc:!(parseLocal)?
-                  "{" stm:!(Stmt.parse) "}"          {(name, (args, maybe loc, stm))}
+        def:        "fun" name:IDENT
+                    "(" args:!(parseArgs) ")"
+                    loc:!(parseLocal)?
+                    "{" stm:!(Stmt.parse) "}"          {(name, (args, maybe loc, stm))}
     )
 
   end
