@@ -90,7 +90,98 @@ open SM
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
-let compile env code = failwith "Not implemented"
+let cmp2suffix = function
+        | "<"  -> "l"
+        | "<=" -> "le"
+        | ">"  -> "g"
+        | ">=" -> "ge"
+        | "==" -> "e"
+        | "!=" -> "ne"
+
+let compileBinop x y op a =
+         match op with
+         | "+"| "-"| "*" ->
+                         [Mov (x, eax); Mov (y, edx); Binop (op, edx, eax); Mov (eax, a)]
+         | "/" ->
+                         [Mov (x, eax); Cltd; IDiv y; Mov (eax, a)]
+         | "%" ->
+                         [Mov (x, eax); Cltd; IDiv y; Mov (edx, a)]
+         | "&&" | "!!" ->
+                         [Mov (x, eax); Binop ("cmp", L 0, eax); Mov (L 0, eax); Set ("ne", "%al");
+                          Mov (y, edx); Binop ("cmp", L 0, edx); Mov (L 0, edx); Set ("ne", "%dl");
+                          Binop (op, edx, eax); Mov (eax, a)]
+         | "==" | "!=" | "<=" | "<" | ">=" | ">" ->
+                         [Mov (y, eax); Binop ("cmp", eax, x); Mov (L 0, eax);
+                          Set (cmp2suffix op, "%al"); Mov (eax, a)]
+         | und ->
+                        failwith (Printf.sprintf "Undefined operator %s" und)
+
+let rec moveVals env = function
+       | 0 ->
+                       (env, [])
+       | n ->
+                       let p, env = env#pop in 
+                       let env, pushed = moveVals env (n - 1) in
+                       (env, pushed @ [Push p])
+
+let compileInstr env = function
+        | BINOP op ->
+                        let y, x, env = env#pop2 in
+                        let a, env = env#allocate in
+                        (env, compileBinop x y op a)
+        | CONST x ->
+                        let a, env = env#allocate in
+                        (env, [Mov (L x, a)])
+        | READ ->
+                        let a, env = env#allocate in
+                        (env, [Call "Lread"; Mov (eax, a)])
+        | WRITE -> 
+                        let p, env = env#pop in
+                        (env, [Push p; Call "Lwrite"; Pop eax])
+        | LD x ->
+                        let a, env = env#allocate in
+                        (env#global x, [Mov (env#loc x, eax); Mov (eax, a)])
+        | ST x ->
+                        let p, env = env#pop in
+                        (env#global x, [Mov (p, eax); Mov (eax, env#loc x)])
+        | LABEL name ->
+                        (env, [Label name])
+        | JMP name ->
+                        (env, [Jmp name])
+        | CJMP (cond, name) ->
+                        let p, env = env#pop in
+                        (env, [Binop ("cmp", L 0, p); CJmp (cond, name)])
+        | BEGIN (name, args, locals) ->
+                        let env = env#enter name args locals in
+                        let reserve = L (4 * List.length locals) in
+                        (env, [Push ebp; Mov (esp, ebp); Binop ("-", reserve, esp)])
+        | END ->
+                        (env, [Label env#epilogue; Mov (ebp, esp); Pop ebp; Ret])
+        | CALL (name, n, flag) ->
+                        let regsToStack = List.fold_right (fun r acc -> Push r :: acc)
+                            env#live_registers [] in
+                        let env, argsToStack = moveVals env n in
+                        let beforeCall = regsToStack @ argsToStack @
+                                             [Call name; Binop ("+", L (4 * n), esp)] in
+                        let regsFromStack = List.fold_left (fun acc r -> Pop r :: acc)
+                                                [] env#live_registers in
+                        if flag 
+                        then
+                                let a, env = env#allocate in
+                                (env, beforeCall @ [Mov (eax, a)] @ regsFromStack)
+                        else
+                                (env, beforeCall @ regsFromStack)
+        | RET flag ->
+                        if flag
+                        then let p, env = env#pop in (env, [Mov (p, eax); Jmp env#epilogue])
+                        else (env, [Jmp env#epilogue])
+
+let rec compile env = function
+        | []             -> (env, [])
+        | hprog :: tprog ->
+                        let env', instr = compileInstr env hprog
+                         in let resEnv, instrs = compile env' tprog
+                             in (resEnv, instr @ instrs)
                                 
 (* A set of strings *)           
 module S = Set.Make (String)
