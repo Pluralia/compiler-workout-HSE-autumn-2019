@@ -84,9 +84,7 @@ let show instr =
 open SM
 
 (* Symbolic stack machine evaluator
-
      compile : env -> prg -> env * instr list
-
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
@@ -196,4 +194,3 @@ let build prog name =
   close_out outf;
   let inc = try Sys.getenv "RC_RUNTIME" with _ -> "../runtime" in
   Sys.command (Printf.sprintf "gcc -m32 -o %s %s/runtime.o %s.s" name inc name)
- 
